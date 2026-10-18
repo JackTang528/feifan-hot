@@ -1,0 +1,31 @@
+{
+  "boards": [
+    { "id": "hackernews", "name": "Hacker News", "kind": "builtin", "useProxy": false },
+    { "id": "weibo", "name": "微博热搜", "kind": "builtin", "useProxy": false },
+    { "id": "bilibili", "name": "B站热门", "kind": "builtin", "useProxy": false },
+    { "id": "toutiao", "name": "今日头条热榜", "kind": "builtin", "useProxy": false },
+    {
+      "id": "google_trends",
+      "name": "Google 趋势",
+      "kind": "rss",
+      "useProxy": true,
+      "url": "https://trends.google.com/trending/rss?geo=US",
+      "titleTag": "title",
+      "linkTag": "ht:news_item_url",
+      "hotTag": "ht:approx_traffic",
+      "hotSuffix": " 热度",
+      "linkTemplate": "https://trends.google.com/trends/explore?geo=US&q={title}"
+    },
+    {
+      "id": "google_news",
+      "name": "Google 新闻",
+      "kind": "rss",
+      "useProxy": true,
+      "url": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+      "titleTag": "title",
+      "linkTag": "link",
+      "splitTitleSource": true
+    },
+    { "id": "x", "name": "X 热门", "kind": "builtin", "useProxy": true }
+  ]
+}
