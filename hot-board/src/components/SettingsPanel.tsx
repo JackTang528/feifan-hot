@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
+import { useCallback, useEffect, useState } from "react";
+import { checkUpdate } from "../api";
 import type {
   ProxyMode,
   ProxySetting,
   ProxySettingsPayload,
   ProxySettingsUpdate,
+  UpdateInfo,
 } from "../types";
 
 interface Props {
@@ -26,6 +30,11 @@ const MODE_LABELS: Record<ProxyMode, string> = {
   direct: "直连",
 };
 
+type UpdateState =
+  | { status: "checking" }
+  | { status: "error"; message: string }
+  | { status: "done"; info: UpdateInfo };
+
 export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props) {
   // 用本地状态做即时交互，保存时才提交
   const [setting, setSetting] = useState<ProxySetting>("auto");
@@ -33,6 +42,26 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
   const [sourceModes, setSourceModes] = useState<Record<string, ProxyMode>>({});
   const [sourceDefaults, setSourceDefaults] = useState<Record<string, ProxyMode>>({});
   const [sourceNames, setSourceNames] = useState<Record<string, string>>({});
+  const [version, setVersion] = useState("");
+  const [updateState, setUpdateState] = useState<UpdateState>({ status: "checking" });
+
+  const runCheck = useCallback(async () => {
+    setUpdateState({ status: "checking" });
+    try {
+      const info = await checkUpdate();
+      setUpdateState({ status: "done", info });
+    } catch (e) {
+      setUpdateState({ status: "error", message: String(e) });
+    }
+  }, []);
+
+  // 打开设置就自动检查一次；版本号直接问 Tauri，失败就留空。
+  useEffect(() => {
+    getVersion()
+      .then(setVersion)
+      .catch(() => {});
+    void runCheck();
+  }, [runCheck]);
 
   useEffect(() => {
     if (!settings) return;
@@ -84,6 +113,82 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
 
         <div className="modal__body">
           {error && <p className="settings__error">{error}</p>}
+
+          <section className="settings__section">
+            <div className="settings__section-head">
+              <h3>软件更新</h3>
+              <button
+                type="button"
+                className="update__check"
+                onClick={() => void runCheck()}
+                disabled={updateState.status === "checking"}
+              >
+                {updateState.status === "checking" ? "检查中…" : "重新检查"}
+              </button>
+            </div>
+
+            <p className="settings__hint">
+              当前版本{" "}
+              <code>
+                v
+                {updateState.status === "done"
+                  ? updateState.info.currentVersion
+                  : version || "…"}
+              </code>
+            </p>
+
+            {updateState.status === "error" && (
+              <p className="update__fail">
+                暂时无法检查更新：{updateState.message}
+              </p>
+            )}
+
+            {updateState.status === "done" && !updateState.info.hasUpdate && (
+              <p className="update__ok">
+                已是最新版本（云端 v{updateState.info.latestVersion}）。
+              </p>
+            )}
+
+            {updateState.status === "done" && updateState.info.hasUpdate && (
+              <>
+                <p className="update__title">
+                  发现新版本 v{updateState.info.latestVersion}
+                </p>
+                {updateState.info.publishedAt && (
+                  <p className="settings__hint">
+                    发布于 {updateState.info.publishedAt}
+                  </p>
+                )}
+                {updateState.info.notes && (
+                  <pre className="update__notes">{updateState.info.notes}</pre>
+                )}
+                {updateState.info.url || updateState.info.pageUrl ? (
+                  <>
+                    <div className="update__actions">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() =>
+                          openUrl(
+                            (updateState.info.url ?? updateState.info.pageUrl)!,
+                          )
+                        }
+                      >
+                        下载更新
+                      </button>
+                    </div>
+                    <p className="settings__hint">
+                      用浏览器下载安装包。装之前先退出本软件（包括托盘里的）。
+                    </p>
+                  </>
+                ) : (
+                  <p className="settings__hint">
+                    更新清单里没有下载地址，请到官网手动下载。
+                  </p>
+                )}
+              </>
+            )}
+          </section>
 
           <section className="settings__section">
             <h3>全局代理模式</h3>

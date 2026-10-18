@@ -14,6 +14,20 @@ export interface BoardResult {
   from_cache: boolean;
 }
 
+/** 云端更新清单的检查结果。 */
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  /** 安装包直链。 */
+  url?: string;
+  /** 下载页（没有直链时用）。 */
+  pageUrl?: string;
+  notes?: string;
+  publishedAt?: string;
+  manifestUrl: string;
+}
+
 export type ProxySetting = "auto" | "manual" | "off";
 export type ProxyMode = "auto" | "proxy" | "direct";
 

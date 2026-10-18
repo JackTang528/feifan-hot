@@ -258,6 +258,7 @@ body {
 }
 
 .btn-icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -283,6 +284,17 @@ body {
 
 .icon {
   display: block;
+}
+
+.btn-icon__dot {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 0 1.5px #fff;
 }
 
 .icon--spin {
@@ -416,6 +428,76 @@ body {
   font-size: 0.95rem;
 }
 
+.settings__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.settings__section-head h3 {
+  margin: 0;
+}
+
+.update__check {
+  border: none;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.update__check:disabled {
+  color: #94a3b8;
+  cursor: default;
+  text-decoration: none;
+}
+
+.update__title {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #b45309;
+}
+
+.update__ok {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: #15803d;
+}
+
+.update__fail {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: #92400e;
+  word-break: break-word;
+}
+
+.update__notes {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.update__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
 .settings__radio {
   display: flex;
   flex-wrap: wrap;
@@ -513,6 +595,31 @@ body {
   .btn-icon:hover:not(:disabled) {
     background: #2f3440;
     color: #e8eaed;
+  }
+
+  .btn-icon__dot {
+    box-shadow: 0 0 0 1.5px #252932;
+  }
+
+  .update__notes {
+    background: #252932;
+    color: #cbd5e1;
+  }
+
+  .update__title {
+    color: #fbbf24;
+  }
+
+  .update__ok {
+    color: #4ade80;
+  }
+
+  .update__fail {
+    color: #fcd34d;
+  }
+
+  .update__check {
+    color: #7aa2f7;
   }
 
   .modal {

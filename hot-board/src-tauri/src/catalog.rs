@@ -272,4 +272,11 @@ mod tests {
         let sources = build_sources(&boards);
         assert_eq!(sources.len(), 7);
     }
+
+    /// 云端清单已经挪到 /hot-board/ 目录，这里盯住别改回根路径。
+    #[test]
+    fn config_url_lives_in_hot_board_folder() {
+        let url = config_url().expect("board_config.url 里要有 http(s) 地址");
+        assert_eq!(url, "https://sport.tomist.com/hot-board/boards.json");
+    }
 }

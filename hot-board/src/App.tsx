@@ -1,6 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getCached, getSettings, refreshAll, setSettings } from "./api";
+import { checkUpdate, getCached, getSettings, refreshAll, setSettings } from "./api";
 import { BoardCard } from "./components/BoardCard";
 import { RefreshIcon, SettingsIcon } from "./components/icons";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -15,6 +15,7 @@ function App() {
   const [settings, setSettingsData] = useState<ProxySettingsPayload | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
 
   const ordered = useMemo(() => boards, [boards]);
   const subtitle = ordered.length
@@ -50,6 +51,19 @@ function App() {
       cancelled = true;
     };
   }, [load]);
+
+  // 启动时静默检查一次更新，有新版本就在设置按钮上点个红点；失败不打扰用户。
+  useEffect(() => {
+    let cancelled = false;
+    checkUpdate()
+      .then((info) => {
+        if (!cancelled) setUpdateAvailable(info.hasUpdate);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const openSettings = useCallback(async () => {
     setSettingsError(null);
@@ -105,10 +119,11 @@ function App() {
             type="button"
             className="btn-icon"
             onClick={openSettings}
-            title="代理设置"
-            aria-label="代理设置"
+            title={updateAvailable ? "代理设置 · 有新版本" : "代理设置"}
+            aria-label={updateAvailable ? "代理设置（有新版本）" : "代理设置"}
           >
             <SettingsIcon className="icon" />
+            {updateAvailable && <span className="btn-icon__dot" aria-hidden="true" />}
           </button>
         </div>
       </header>

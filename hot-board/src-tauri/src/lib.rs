@@ -3,6 +3,7 @@ mod catalog;
 mod model;
 mod proxy;
 mod sources;
+mod update;
 
 use cache::BoardCache;
 use catalog::BoardConfig;
@@ -319,6 +320,38 @@ fn get_settings(state: tauri::State<'_, AppState>) -> SettingsPayload {
     build_payload(&state, &settings)
 }
 
+/// 拉云端更新清单，和当前编译进去的版本比大小。
+#[tauri::command]
+async fn check_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<update::UpdateInfo, String> {
+    let manifest_url = update::manifest_url().ok_or_else(|| {
+        "还没有配置更新地址（src-tauri/update_config.url）".to_string()
+    })?;
+    let current = app.package_info().version.to_string();
+
+    // 更新检查也走用户的代理设置；没有单独配置就跟随全局。
+    let settings = state.proxy_state.lock().unwrap().clone();
+    let client = pick_client_with_settings(&state, &settings, "__update__", ProxyMode::Auto);
+
+    let resp = client
+        .get(&manifest_url)
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("连接更新服务器失败：{e}"))?
+        .error_for_status()
+        .map_err(|e| format!("更新服务器返回错误：{e}"))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取更新清单失败：{e}"))?;
+
+    let manifest = update::parse(&text)?;
+    Ok(update::UpdateInfo::new(current, manifest, manifest_url))
+}
+
 #[tauri::command]
 fn set_settings(
     state: tauri::State<'_, AppState>,
@@ -429,7 +462,8 @@ pub fn run() {
             get_cached,
             refresh_all,
             get_settings,
-            set_settings
+            set_settings,
+            check_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { BoardResult, ProxySettingsPayload, ProxySettingsUpdate } from "./types";
+import type {
+  BoardResult,
+  ProxySettingsPayload,
+  ProxySettingsUpdate,
+  UpdateInfo,
+} from "./types";
 
 export function getCached() {
   return invoke<BoardResult[]>("get_cached");
@@ -15,4 +20,8 @@ export function getSettings() {
 
 export function setSettings(payload: ProxySettingsUpdate) {
   return invoke<ProxySettingsPayload>("set_settings", { payload });
+}
+
+export function checkUpdate() {
+  return invoke<UpdateInfo>("check_update");
 }

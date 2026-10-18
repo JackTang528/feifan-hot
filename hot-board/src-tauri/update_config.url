@@ -1,0 +1,3 @@
+# 更新清单地址。软件点设置里的「检查更新」会拉这个 JSON。
+# 只认第一条 http(s) 地址，改地址不用改代码；空着就只有内置清单，检查更新会提示未配置。
+https://sport.tomist.com/hot-board/latest.json
