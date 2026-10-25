@@ -1,6 +1,6 @@
 {
-  "version": "0.1.4",
-  "url": "https://sport.tomist.com/hot-board/非凡热点榜_0.1.4_x64-setup.exe",
-  "notes": "1. Google 趋势支持 Shopping 分类（近 7 天电商热搜，按热度排序）\n2. 页脚新增版本号展示与 Tomist.com 链接",
+  "version": "0.1.5",
+  "url": "https://sport.tomist.com/hot-board/非凡热点榜_0.1.5_x64-setup.exe",
+  "notes": "设置里可调整热榜源的显示顺序",
   "publishedAt": "2026-10-25"
 }
