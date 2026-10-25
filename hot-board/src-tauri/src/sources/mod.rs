@@ -2,6 +2,7 @@ use crate::model::HotItem;
 use async_trait::async_trait;
 
 pub mod bilibili;
+pub mod google_trends;
 pub mod hackernews;
 pub mod rss;
 pub mod rss_feed;

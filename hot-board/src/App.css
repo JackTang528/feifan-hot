@@ -66,6 +66,12 @@ body {
   text-underline-offset: 2px;
 }
 
+.footer__version {
+  margin-left: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 .board-card {
   background: #fff;
   border-radius: 12px;

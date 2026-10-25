@@ -1,4 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { checkUpdate, getCached, getSettings, refreshAll, setSettings } from "./api";
 import { BoardCard } from "./components/BoardCard";
@@ -16,6 +17,7 @@ function App() {
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [version, setVersion] = useState("");
 
   const ordered = useMemo(() => boards, [boards]);
   const subtitle = ordered.length
@@ -51,6 +53,13 @@ function App() {
       cancelled = true;
     };
   }, [load]);
+
+  // 版本号直接问 Tauri，避免和 tauri.conf.json 里的写法对不上。
+  useEffect(() => {
+    getVersion()
+      .then(setVersion)
+      .catch(() => {});
+  }, []);
 
   // 启动时静默检查一次更新，有新版本就在设置按钮上点个红点；失败不打扰用户。
   useEffect(() => {
@@ -135,7 +144,14 @@ function App() {
       </main>
 
       <footer className="footer">
-        © 2026 深圳市汤姆网络科技有限公司{" "}
+        © 2026{" "}
+        <button
+          type="button"
+          className="footer__link"
+          onClick={() => openUrl("https://tomist.com")}
+        >
+          Tomist.com
+        </button>{" "}
         <button
           type="button"
           className="footer__link"
@@ -143,6 +159,7 @@ function App() {
         >
           粤ICP备14061718号
         </button>
+        {version && <span className="footer__version">V{version}</span>}
       </footer>
 
       {settingsOpen && (

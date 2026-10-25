@@ -1,5 +1,7 @@
 use crate::proxy::ProxyMode;
-use crate::sources::{bilibili, hackernews, rss_feed::RssFeed, toutiao, weibo, x, Source};
+use crate::sources::{
+    bilibili, google_trends, hackernews, rss_feed::RssFeed, toutiao, weibo, x, Source,
+};
 use serde::Deserialize;
 use std::path::Path;
 use std::time::Duration;
@@ -140,23 +142,28 @@ fn named(board: &BoardConfig) -> Box<dyn Source> {
     } else {
         board.name.clone()
     };
-    let inner = match board.kind.as_str() {
-        "builtin" => builtin(&board.id).unwrap_or_else(|| {
-            Box::new(Broken {
+    // 云端清单仍把这一项标成 RSS。RSS 不接受分类，这里固定改走 Shopping。
+    let inner = if board.id == "google_trends" {
+        Box::new(google_trends::GoogleTrends) as Box<dyn Source>
+    } else {
+        match board.kind.as_str() {
+            "builtin" => builtin(&board.id).unwrap_or_else(|| {
+                Box::new(Broken {
+                    id: board.id.clone(),
+                    message: format!("当前版本没有内置榜单 {}", board.id),
+                })
+            }),
+            "rss" => rss_source(board).unwrap_or_else(|message| {
+                Box::new(Broken {
+                    id: board.id.clone(),
+                    message,
+                })
+            }),
+            other => Box::new(Broken {
                 id: board.id.clone(),
-                message: format!("当前版本没有内置榜单 {}", board.id),
-            })
-        }),
-        "rss" => rss_source(board).unwrap_or_else(|message| {
-            Box::new(Broken {
-                id: board.id.clone(),
-                message,
-            })
-        }),
-        other => Box::new(Broken {
-            id: board.id.clone(),
-            message: format!("不认识的榜单类型 {other}"),
-        }),
+                message: format!("不认识的榜单类型 {other}"),
+            }),
+        }
     };
     Box::new(NamedSource { name, inner })
 }
