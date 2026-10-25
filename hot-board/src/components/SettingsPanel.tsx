@@ -1,6 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { checkUpdate } from "../api";
 import { mergeSourceOrder, moveItem } from "../sourceOrder";
 import type {
@@ -48,6 +48,8 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  // 拖动开始后马上就能放下，不能等 setState 再渲染。
+  const draggingRef = useRef<string | null>(null);
   const [version, setVersion] = useState("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "checking" });
 
@@ -319,14 +321,16 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
                         data-source-id={id}
                         className={rowClass || undefined}
                         onDragOver={(e) => {
-                          if (!draggingId) return;
+                          if (!draggingRef.current) return;
                           e.preventDefault();
                           e.dataTransfer.dropEffect = "move";
                           if (overId !== id) setOverId(id);
                         }}
                         onDrop={(e) => {
                           e.preventDefault();
-                          const fromId = e.dataTransfer.getData("text/plain") || draggingId || "";
+                          const fromId =
+                            e.dataTransfer.getData("text/plain") || draggingRef.current || "";
+                          draggingRef.current = null;
                           dropSource(fromId, id);
                           setDraggingId(null);
                           setOverId(null);
@@ -388,13 +392,15 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
                                 }
                               }}
                               onDragStart={(e) => {
-                                e.dataTransfer.setData("text/plain", id);
+                                draggingRef.current = id;
                                 e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", id);
                                 const row = e.currentTarget.closest("tr");
                                 if (row) e.dataTransfer.setDragImage(row, 24, 16);
                                 setDraggingId(id);
                               }}
                               onDragEnd={() => {
+                                draggingRef.current = null;
                                 setDraggingId(null);
                                 setOverId(null);
                               }}
