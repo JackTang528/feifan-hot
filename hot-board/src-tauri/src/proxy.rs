@@ -11,6 +11,10 @@
 //!     - `Auto`   ：跟随全局（云端 boards.json 里可能已经把某个源标成默认 Proxy / Direct）
 //!     - `Proxy`  ：强制走代理
 //!     - `Direct` ：强制直连
+//!
+//!   榜单顺序 `source_order`
+//!     - 空：主界面和设置列表都跟随云端 boards.json 的顺序
+//!     - 非空：按这里的 id 排列；云端新增的源接在末尾；已经下线的源忽略
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -83,6 +87,9 @@ pub struct ProxySettings {
     /// 每个源的独立模式。缺省的源 = Auto（跟随全局）。
     #[serde(default)]
     pub source_modes: std::collections::BTreeMap<String, ProxyMode>,
+    /// 用户自定义的榜单显示顺序（源 id）。空 = 跟随云端 boards.json。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_order: Vec<String>,
 }
 
 impl ProxySettings {
@@ -119,6 +126,60 @@ impl ProxySettings {
             .copied()
             .unwrap_or(server_default)
     }
+}
+
+/// 把用户保存的顺序套到当前云端清单上。
+///
+/// - `saved` 为空：原样返回云端顺序。
+/// - 两边都有的 id：保留用户顺序。
+/// - 只在云端出现的新源：按云端顺序接在末尾。
+/// - 用户顺序里已经下线的 id：丢掉。重复和空白也丢掉。
+pub fn merge_source_order(catalog: &[String], saved: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::<String>::new();
+    let mut out = Vec::with_capacity(catalog.len());
+    let catalog_ids: std::collections::HashSet<String> = catalog
+        .iter()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect();
+
+    for id in saved {
+        let id = id.trim();
+        if id.is_empty() || !catalog_ids.contains(id) {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(id.to_string());
+        }
+    }
+
+    for id in catalog {
+        let id = id.trim();
+        if id.is_empty() {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(id.to_string());
+        }
+    }
+    out
+}
+
+/// 写入前整理用户顺序：去掉空白和重复，但保留当前清单里没有的 id，
+/// 这样某个源暂时从云端消失后，还能回到原来的位置。
+pub fn normalize_saved_order(order: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::<String>::new();
+    let mut out = Vec::with_capacity(order.len());
+    for id in order {
+        let id = id.trim();
+        if id.is_empty() {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(id.to_string());
+        }
+    }
+    out
 }
 
 pub fn load_settings(path: &Path) -> ProxySettings {
@@ -353,5 +414,108 @@ mod tests {
     fn build_proxy_url_rejects_empty() {
         assert!(build_proxy_url("", None).is_none());
         assert!(build_proxy_url("   ;   ", None).is_none());
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|id| (*id).to_string()).collect()
+    }
+
+    #[test]
+    fn empty_saved_order_follows_catalog() {
+        let catalog = ids(&["hackernews", "weibo", "bilibili"]);
+        assert_eq!(merge_source_order(&catalog, &[]), catalog);
+    }
+
+    #[test]
+    fn saved_order_reorders_and_appends_new_sources_in_catalog_order() {
+        let catalog = ids(&[
+            "hackernews",
+            "weibo",
+            "bilibili",
+            "toutiao",
+            "google_trends",
+            "google_news",
+        ]);
+        let saved = ids(&["toutiao", "hackernews", "bilibili", "removed"]);
+        assert_eq!(
+            merge_source_order(&catalog, &saved),
+            ids(&[
+                "toutiao",
+                "hackernews",
+                "bilibili",
+                "weibo",
+                "google_trends",
+                "google_news",
+            ])
+        );
+    }
+
+    #[test]
+    fn saved_order_drops_blanks_and_duplicates() {
+        let catalog = ids(&["a", "b", "c"]);
+        let saved = ids(&[" b ", "b", "  ", "a"]);
+        assert_eq!(merge_source_order(&catalog, &saved), ids(&["b", "a", "c"]));
+    }
+
+    #[test]
+    fn normalize_saved_order_trims_and_dedupes_but_keeps_unknown_ids() {
+        assert_eq!(
+            normalize_saved_order(&ids(&[" b ", "a", "b", "", "gone"])),
+            ids(&["b", "a", "gone"])
+        );
+    }
+
+    #[test]
+    fn old_settings_file_without_source_order_still_loads() {
+        let text = r#"{"setting":"manual","proxy_url":"http://127.0.0.1:7897","source_modes":{"weibo":"direct"}}"#;
+        let settings: ProxySettings = serde_json::from_str(text).unwrap();
+        assert_eq!(settings.setting, ProxySetting::Manual);
+        assert_eq!(settings.proxy_url.as_deref(), Some("http://127.0.0.1:7897"));
+        assert_eq!(settings.source_modes.get("weibo"), Some(&ProxyMode::Direct));
+        assert!(settings.source_order.is_empty());
+        assert!(!settings.use_proxy("weibo", ProxyMode::Proxy));
+    }
+
+    #[test]
+    fn source_order_roundtrips_without_changing_proxy_modes() {
+        let mut settings = ProxySettings::default();
+        settings.setting = ProxySetting::Manual;
+        settings.proxy_url = Some("http://127.0.0.1:7897".into());
+        settings
+            .source_modes
+            .insert("weibo".into(), ProxyMode::Direct);
+        settings.source_order = vec!["toutiao".into(), "hackernews".into()];
+
+        let text = serde_json::to_string(&settings).unwrap();
+        assert!(text.contains("\"source_order\""));
+        let loaded: ProxySettings = serde_json::from_str(&text).unwrap();
+        assert_eq!(loaded.source_order, settings.source_order);
+        assert_eq!(loaded.source_modes.get("weibo"), Some(&ProxyMode::Direct));
+        assert!(loaded.use_proxy("google_trends", ProxyMode::Auto));
+        assert!(!loaded.use_proxy("weibo", ProxyMode::Auto));
+    }
+
+    #[test]
+    fn write_and_load_settings_keeps_order_and_source_modes() {
+        let path = std::env::temp_dir().join(format!(
+            "hot-board-proxy-order-{}.json",
+            std::process::id()
+        ));
+        let mut settings = ProxySettings::default();
+        settings.setting = ProxySetting::Off;
+        settings
+            .source_modes
+            .insert("google_news".into(), ProxyMode::Proxy);
+        settings.source_order = vec!["bbc_sport".into(), "hackernews".into()];
+        write_settings(&settings, &path).unwrap();
+        let loaded = load_settings(&path);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(loaded.setting, ProxySetting::Off);
+        assert_eq!(
+            loaded.source_modes.get("google_news"),
+            Some(&ProxyMode::Proxy)
+        );
+        assert_eq!(loaded.source_order, settings.source_order);
+        assert!(!loaded.use_proxy("google_news", ProxyMode::Proxy));
     }
 }

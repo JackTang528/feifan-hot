@@ -1,7 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { checkUpdate } from "../api";
+import { mergeSourceOrder, moveItem } from "../sourceOrder";
 import type {
   ProxyMode,
   ProxySetting,
@@ -9,6 +10,7 @@ import type {
   ProxySettingsUpdate,
   UpdateInfo,
 } from "../types";
+import { GripIcon } from "./icons";
 
 interface Props {
   settings: ProxySettingsPayload | null;
@@ -37,11 +39,17 @@ type UpdateState =
 
 export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props) {
   // 用本地状态做即时交互，保存时才提交
-  const [setting, setSetting] = useState<ProxySetting>("auto");
-  const [proxyUrl, setProxyUrl] = useState("");
-  const [sourceModes, setSourceModes] = useState<Record<string, ProxyMode>>({});
-  const [sourceDefaults, setSourceDefaults] = useState<Record<string, ProxyMode>>({});
-  const [sourceNames, setSourceNames] = useState<Record<string, string>>({});
+  const [setting, setSetting] = useState<ProxySetting>(settings?.setting ?? "auto");
+  const [proxyUrl, setProxyUrl] = useState(settings?.proxyUrl ?? "");
+  const [sourceModes, setSourceModes] = useState<Record<string, ProxyMode>>(
+    settings?.sourceModes ?? {},
+  );
+  // null = 还没在这次打开里改过顺序，保存时沿用设置里的原始值（可能是空，表示跟随云端）。
+  const [orderOverride, setOrderOverride] = useState<string[] | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  // 拖动开始后马上就能放下，不能等 setState 再渲染。
+  const draggingRef = useRef<string | null>(null);
   const [version, setVersion] = useState("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "checking" });
 
@@ -68,15 +76,41 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
     setSetting(settings.setting);
     setProxyUrl(settings.proxyUrl ?? "");
     setSourceModes(settings.sourceModes ?? {});
-    setSourceDefaults(settings.sourceDefaults ?? {});
-    setSourceNames(settings.sourceNames ?? {});
+    setOrderOverride(null);
   }, [settings]);
 
+  function catalogIdsOf(current: ProxySettingsPayload): string[] {
+    return current.catalogOrder.length > 0
+      ? current.catalogOrder
+      : Object.keys(current.sourceNames);
+  }
+
+  function moveSource(id: string, delta: number) {
+    if (!settings) return;
+    const catalogIds = catalogIdsOf(settings);
+    setOrderOverride((prev) => {
+      const ids = mergeSourceOrder(catalogIds, prev ?? settings.sourceOrder);
+      const index = ids.indexOf(id);
+      return moveItem(ids, index, index + delta) ?? prev;
+    });
+  }
+
+  function dropSource(fromId: string, toId: string) {
+    if (!settings || !fromId || fromId === toId) return;
+    const catalogIds = catalogIdsOf(settings);
+    setOrderOverride((prev) => {
+      const ids = mergeSourceOrder(catalogIds, prev ?? settings.sourceOrder);
+      return moveItem(ids, ids.indexOf(fromId), ids.indexOf(toId)) ?? prev;
+    });
+  }
+
   async function handleSave() {
-    const payload = {
+    if (!settings) return;
+    const payload: ProxySettingsUpdate = {
       setting,
       proxyUrl: proxyUrl.trim() || undefined,
       sourceModes,
+      sourceOrder: orderOverride ?? settings.sourceOrder,
     };
     await onSave(payload);
   }
@@ -95,13 +129,10 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
     );
   }
 
-  const sortedIds = Object.keys(sourceNames).sort((a, b) => {
-    const ai = sourceDefaults[a] ?? "auto";
-    const bi = sourceDefaults[b] ?? "auto";
-    // 先显示云端的默认代理，再显示直连，最后跟随全局
-    const order: Record<ProxyMode, number> = { proxy: 0, auto: 1, direct: 2 };
-    return order[ai] - order[bi];
-  });
+  const visibleIds = mergeSourceOrder(
+    catalogIdsOf(settings),
+    orderOverride ?? settings.sourceOrder,
+  );
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -253,9 +284,9 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
           <section className="settings__section">
             <h3>每个源的开关</h3>
             <p className="settings__hint">
-              默认跟随云端配置。下面的「本地覆盖」列会强制覆盖云端值，重启软件后仍保留。
+              默认跟随云端配置。「本地覆盖」会盖过云端值。右侧可上移、下移或拖动把手，调整主界面卡片的顺序。覆盖和顺序都写在本机，重启后仍然保留。
             </p>
-            {sortedIds.length === 0 ? (
+            {visibleIds.length === 0 ? (
               <p className="settings__empty">暂无榜单。</p>
             ) : (
               <table className="settings__table">
@@ -264,18 +295,52 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
                     <th>榜单</th>
                     <th>云端默认</th>
                     <th>本地覆盖</th>
+                    <th className="settings__sort">排序</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {sortedIds.map((id) => {
-                    const serverDefault = sourceDefaults[id] ?? "auto";
+                <tbody
+                  onDragLeave={(e) => {
+                    const next = e.relatedTarget;
+                    if (next instanceof Node && e.currentTarget.contains(next)) return;
+                    setOverId(null);
+                  }}
+                >
+                  {visibleIds.map((id, index) => {
+                    const serverDefault = settings.sourceDefaults[id] ?? "auto";
                     const userMode = sourceModes[id] ?? serverDefault;
+                    const name = settings.sourceNames[id] ?? id;
+                    const rowClass = [
+                      draggingId === id ? "is-dragging" : "",
+                      overId === id && draggingId && draggingId !== id ? "is-drop-target" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
                     return (
-                      <tr key={id}>
-                        <td>{sourceNames[id] ?? id}</td>
+                      <tr
+                        key={id}
+                        data-source-id={id}
+                        className={rowClass || undefined}
+                        onDragOver={(e) => {
+                          if (!draggingRef.current) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (overId !== id) setOverId(id);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const fromId =
+                            e.dataTransfer.getData("text/plain") || draggingRef.current || "";
+                          draggingRef.current = null;
+                          dropSource(fromId, id);
+                          setDraggingId(null);
+                          setOverId(null);
+                        }}
+                      >
+                        <td>{name}</td>
                         <td>{MODE_LABELS[serverDefault]}</td>
                         <td>
                           <select
+                            aria-label={`${name}的本地覆盖`}
                             value={userMode}
                             onChange={(e) => {
                               const next = { ...sourceModes, [id]: e.target.value as ProxyMode };
@@ -287,6 +352,62 @@ export function SettingsPanel({ settings, busy, error, onSave, onClose }: Props)
                             <option value="proxy">走代理</option>
                             <option value="direct">直连</option>
                           </select>
+                        </td>
+                        <td className="settings__sort">
+                          <div className="settings__sort-actions">
+                            <button
+                              type="button"
+                              className="sort-btn"
+                              aria-label={`上移${name}`}
+                              title="上移"
+                              disabled={index === 0}
+                              onClick={() => moveSource(id, -1)}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className="sort-btn"
+                              aria-label={`下移${name}`}
+                              title="下移"
+                              disabled={index === visibleIds.length - 1}
+                              onClick={() => moveSource(id, 1)}
+                            >
+                              ↓
+                            </button>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              className="sort-btn sort-btn--handle"
+                              draggable
+                              aria-label={`拖动调整${name}的顺序`}
+                              title="拖动排序"
+                              onKeyDown={(e) => {
+                                if (e.key === "ArrowUp") {
+                                  e.preventDefault();
+                                  moveSource(id, -1);
+                                } else if (e.key === "ArrowDown") {
+                                  e.preventDefault();
+                                  moveSource(id, 1);
+                                }
+                              }}
+                              onDragStart={(e) => {
+                                draggingRef.current = id;
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", id);
+                                const row = e.currentTarget.closest("tr");
+                                if (row) e.dataTransfer.setDragImage(row, 24, 16);
+                                setDraggingId(id);
+                              }}
+                              onDragEnd={() => {
+                                draggingRef.current = null;
+                                setDraggingId(null);
+                                setOverId(null);
+                              }}
+                            >
+                              <GripIcon />
+                            </span>
+                          </div>
                         </td>
                       </tr>
                     );

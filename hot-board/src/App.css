@@ -590,6 +590,70 @@ body {
   cursor: not-allowed;
 }
 
+.settings__table th.settings__sort,
+.settings__table td.settings__sort {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  vertical-align: middle;
+}
+
+.settings__sort-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid #e2e6ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sort-btn:hover:not(:disabled) {
+  background: #f4f6f9;
+  color: #1a1a1a;
+}
+
+.sort-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sort-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.sort-btn--handle {
+  cursor: grab;
+  user-select: none;
+}
+
+.sort-btn--handle:active {
+  cursor: grabbing;
+}
+
+.settings__table tr.is-dragging td {
+  opacity: 0.45;
+}
+
+.settings__table tr.is-drop-target td {
+  background: #eff6ff;
+}
+
 /* ---------- dark mode ---------- */
 @media (prefers-color-scheme: dark) {
   .btn-icon {
@@ -682,5 +746,20 @@ body {
     background: #252932;
     color: #e8eaed;
     border-color: #3a3f4a;
+  }
+
+  .sort-btn {
+    background: #252932;
+    color: #cbd5e1;
+    border-color: #3a3f4a;
+  }
+
+  .sort-btn:hover:not(:disabled) {
+    background: #2f3440;
+    color: #e8eaed;
+  }
+
+  .settings__table tr.is-drop-target td {
+    background: #1e293b;
   }
 }

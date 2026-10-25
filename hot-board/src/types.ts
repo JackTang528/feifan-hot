@@ -42,6 +42,10 @@ export interface ProxySettingsPayload {
   sourceDefaults: Record<string, ProxyMode>;
   /** 榜单 id → 显示名称（只读，前端用于设置面板展示）。 */
   sourceNames: Record<string, string>;
+  /** 云端 boards.json 的榜单 id 顺序。 */
+  catalogOrder: string[];
+  /** 用户自定义顺序。空数组表示跟随云端顺序。 */
+  sourceOrder: string[];
   /** 当前 Windows 系统检测到的代理（提示用）。 */
   systemProxy?: string;
   /** setting=manual 时，手动代理客户端是否已构建成功。 */
@@ -51,5 +55,5 @@ export interface ProxySettingsPayload {
 /** 提交给后端写入的设置（不含只读字段）。 */
 export type ProxySettingsUpdate = Pick<
   ProxySettingsPayload,
-  "setting" | "proxyUrl" | "sourceModes"
+  "setting" | "proxyUrl" | "sourceModes" | "sourceOrder"
 >;
