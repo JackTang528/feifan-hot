@@ -199,9 +199,37 @@ fn pick_proxy_client(state: &AppState, setting: ProxySetting) -> Arc<reqwest::Cl
 // Tauri 命令
 // ---------------------------------------------------------------------------
 
+/// 按用户保存在 `proxy_config.json` 里的顺序排榜单。
+/// 清单本身仍保持云端顺序，避免新源失去原来的相对位置。
+fn boards_in_display_order(
+    state: &AppState,
+    boards: Vec<catalog::BoardConfig>,
+) -> Vec<catalog::BoardConfig> {
+    let saved = state.proxy_state.lock().unwrap().source_order.clone();
+    let catalog_ids: Vec<String> = boards.iter().map(|board| board.id.clone()).collect();
+    let order = proxy::merge_source_order(&catalog_ids, &saved);
+    let mut by_id: std::collections::HashMap<String, catalog::BoardConfig> = boards
+        .into_iter()
+        .map(|board| (board.id.clone(), board))
+        .collect();
+    let mut ordered = Vec::with_capacity(order.len());
+    for id in &order {
+        if let Some(board) = by_id.remove(id) {
+            ordered.push(board);
+        }
+    }
+    for id in &catalog_ids {
+        if let Some(board) = by_id.remove(id) {
+            ordered.push(board);
+        }
+    }
+    ordered
+}
+
 #[tauri::command]
 async fn get_cached(state: tauri::State<'_, AppState>) -> Result<Vec<BoardResult>, String> {
     let boards = state.catalog.lock().unwrap().clone();
+    let boards = boards_in_display_order(&state, boards);
     let ids: Vec<String> = boards.into_iter().map(|board| board.id).collect();
     let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
     state.cache.get_all(&refs).map_err(|e| e.to_string())
@@ -213,6 +241,7 @@ async fn refresh_all(state: tauri::State<'_, AppState>) -> Result<Vec<BoardResul
     let current = state.catalog.lock().unwrap().clone();
     let boards = catalog::resolve(&state.http, &state.catalog_path, &current).await;
     *state.catalog.lock().unwrap() = boards.clone();
+    let boards = boards_in_display_order(&state, boards);
 
     // 2) 快照当前代理设置（避免 async 期间持锁）
     let settings = state.proxy_state.lock().unwrap().clone();
@@ -278,6 +307,10 @@ struct SettingsPayload {
     source_defaults: std::collections::BTreeMap<String, ProxyMode>,
     /// 榜单 id → 显示名称（用于设置面板展示）。
     source_names: std::collections::BTreeMap<String, String>,
+    /// 云端 boards.json 的 id 顺序。没有自定义顺序时，设置列表按这个排。
+    catalog_order: Vec<String>,
+    /// 用户保存在 proxy_config.json 的顺序。空 = 跟随云端。
+    source_order: Vec<String>,
     /// 当前 Windows 系统检测到的代理（前端提示用）。
     system_proxy: Option<String>,
     /// 手动代理当前是否已构建成功（setting=Manual 时）。
@@ -290,6 +323,9 @@ struct SettingsUpdate {
     setting: ProxySettingWire,
     proxy_url: Option<String>,
     source_modes: std::collections::BTreeMap<String, ProxyMode>,
+    /// 缺省当成空顺序，老前端保存代理时不会把字段弄丢到解析失败。
+    #[serde(default)]
+    source_order: Vec<String>,
 }
 
 fn build_payload(state: &AppState, settings: &ProxySettings) -> SettingsPayload {
@@ -302,6 +338,7 @@ fn build_payload(state: &AppState, settings: &ProxySettings) -> SettingsPayload 
         .iter()
         .map(|b| (b.id.clone(), b.name.clone()))
         .collect();
+    let catalog_order = boards.iter().map(|b| b.id.clone()).collect();
     let manual_client_active = state.manual_http.lock().unwrap().is_some();
     SettingsPayload {
         setting: settings.setting.into(),
@@ -309,6 +346,8 @@ fn build_payload(state: &AppState, settings: &ProxySettings) -> SettingsPayload 
         source_modes: settings.source_modes.clone(),
         source_defaults,
         source_names,
+        catalog_order,
+        source_order: settings.source_order.clone(),
         system_proxy: proxy::detect_system_proxy(),
         manual_client_active,
     }
@@ -374,6 +413,7 @@ fn set_settings(
         settings_guard.setting = new_setting;
         settings_guard.proxy_url = new_url.clone();
         settings_guard.source_modes = payload.source_modes.clone();
+        settings_guard.source_order = proxy::normalize_saved_order(&payload.source_order);
     }
 
     // 需要时重建手动代理客户端
